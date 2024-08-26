@@ -69,7 +69,7 @@ public class TsqcoConfig {
             smartConnect.setAccessToken(userWithRetry.accessToken);
             smartConnect.setRefreshToken(userWithRetry.refreshToken);
         } catch (Exception ex) {
-            log.error("Session is expired {}", ex);
+            log.error("Session is expired !! {}", ex);
             String tokens = tsqcoFileService.readFromFile(BASE_DIR + TMP_FILE_NAME);
             String token[] = tokens.split(",");
             TokenSet tokenSet = smartConnect.renewAccessToken(token[0], token[1]);
