@@ -1,0 +1,40 @@
+spring:
+   application:
+      name: tsqco
+   jackson:
+      serialization.write_dates_as_timestamps: false
+      time-zone: Asia/Kolkata
+   datasource:
+      url: jdbc:postgresql://localhost:5433/postgres
+      username: postgres
+      password: postgres
+      driverClassName: org.postgresql.Driver
+   jpa:
+      database-timezone: Asia/Kolkata
+      hibernate:
+         ddl-auto: update
+      show-sql: false
+      properties:
+         hibernate:
+            jdbc:
+               batch_size: 500
+               time_zone: Asia/Kolkata
+            order_inserts: true
+            format_sql: true
+
+   server:
+      port: 8080
+   codec:
+      max-in-memory-size: 25000KB
+logging:
+   config: classpath:logback.xml
+   level:
+      root: "info"
+      org.springframework.web: "error"
+      org.hibernate: "error"
+tsqco:
+   kiteApiKey: ${KITE_API_KEY}
+   kiteSecretKey: ${KITE_SECRET_KEY}
+   kiteUserId: ${KITE_USER_ID}
+
+
