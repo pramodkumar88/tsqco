@@ -5,6 +5,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.query.Procedure;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -14,6 +15,10 @@ public interface TsqcoAngelInstrumentsRepo extends JpaRepository<TsqcoAngelInstr
     List<TsqcoAngelInstruments> findDistinctBySymbolStartsWith(String symbol);
 
     List<TsqcoAngelInstruments> findDistinctBySymbolStartsWithAndExchseg(String symbol, String exchseg);
+
+    @Procedure(procedureName = "tsqco.backup_and_clean_tsqco_angel_instruments")
+    void callBackupAndCleanInstruments();
+
 /*
 
     @Transactional

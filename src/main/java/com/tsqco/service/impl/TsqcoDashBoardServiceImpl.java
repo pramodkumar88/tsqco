@@ -148,9 +148,11 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
         /*tsqcoAngelInstrumentsRepo.truncateInstruments();
         tsqcoAngelInstrumentsRepo.resetInstrumentSequence();*/
         //tsqcoAngelInstrumentsRepo.manageInstrumentsTable();
+
         long startTime = System.currentTimeMillis();
         Optional<AngelApplicationConfig> instrumentLastLoaded = tsqcoAngelAppConfigRepo.findById(1);
         if (!instrumentLastLoaded.isPresent() || !DateHelper.timeRangeCheck(instrumentLastLoaded.get().getInstrumentlastloaded().toString())) {
+            tsqcoAngelInstrumentsRepo.callBackupAndCleanInstruments();
             webClient.get()
                     .uri("/OpenAPI_File/files/OpenAPIScripMaster.json")
                     .retrieve()
@@ -183,15 +185,26 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
             log.debug("Total No of Instruments loaded to DB {} ", filteredInstruments.size());
             List<TsqcoAngelInstruments> filterByEquityInstruments = savedInstruments.stream().filter(e -> e.getSymbol().endsWith("EQ")).collect(Collectors.toList());
             log.debug("Total No of Instruments filtered with Equatity {} ", filterByEquityInstruments.size());
-            for(TsqcoAngelInstruments tai: filterByEquityInstruments ){
-                AngelMarketData marketData = getMarketDataWithRetry(tai.getExchseg(), tai.getToken());
-                if(null != marketData) {
-                    tai.setLtp(marketData.getLtp());
-                    tai.setPercentagechange(marketData.getPercentChange());
-                    tai.setIntrumentdate(LocalDateTime.now());
-                    tsqcoAngelInstrumentsRepo.save(tai);
+            int fetchSize = 50;
+            for (int i = 0; i < filterByEquityInstruments.size(); i += fetchSize) {
+                int end = Math.min(filterByEquityInstruments.size(), i + fetchSize);
+                List<TsqcoAngelInstruments> instrumentsList = filterByEquityInstruments.subList(i, end);
+                List<AngelMarketData> marketDataList = getMarketDataWithRetry(instrumentsList);
+                Map<String, AngelMarketData> mapOfData = new HashMap<>();
+                for(AngelMarketData mktData : marketDataList){
+                    mapOfData.put(mktData.getTradingSymbol(), mktData);
                 }
+                for (TsqcoAngelInstruments instList : instrumentsList) {
+                    AngelMarketData mktData = mapOfData.get(instList.getSymbol());
+                    if (mktData != null) {
+                        instList.setLtp(mktData.getLtp());
+                        instList.setPercentagechange(mktData.getPercentChange());
+                        instList.setIntrumentdate(LocalDateTime.now());
+                    }
+                }
+                tsqcoAngelInstrumentsRepo.saveAll(instrumentsList);
             }
+
             log.debug("Total No of Instruments updated with LTP {} ", filterByEquityInstruments.size());
         } catch (Exception e) {
             log.error(String.valueOf(e));
@@ -199,20 +212,24 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
         return Mono.empty();
     }
 
-    public AngelMarketData getMarketDataWithRetry(String exch, String token) throws InterruptedException {
+    public List<AngelMarketData> getMarketDataWithRetry(List<TsqcoAngelInstruments> instrumentsList) throws InterruptedException {
         int attempts = 0;
-        AngelMarketData marketData = null;
+        List<AngelMarketData> marketData = null;
         int backoff = 2000;
+        List<String> tokenList = new ArrayList<>();
         while (attempts < MAX_RETRIES) {
             try {
                 rateLimiter.acquire();
-                marketData = getMarketData(new AngelMarketData(exch, token, "FULL"));
+                for(TsqcoAngelInstruments tai : instrumentsList) {
+                    tokenList.add(tai.getToken());
+                }
+                marketData = getMarketData(new AngelMarketData("NSE", tokenList, "FULL"), true);
                 break; // If the request is successful, break the loop
             } catch (RuntimeException e) {
                 attempts++;
                 Thread.sleep(backoff);
                 backoff *= 2;
-                log.error("Attempt " + attempts + " failed: " + e.getMessage() + " Token No :" +token);
+                log.error("Attempt " + attempts + " failed: " + e.getMessage());
                 if (attempts >= MAX_RETRIES) {
                     log.error("All attempts failed.");
                 }
@@ -223,21 +240,27 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
 
 
     @Override
-    public AngelMarketData getMarketData(AngelMarketData mktData) throws RuntimeException{
+    public List<AngelMarketData> getMarketData(AngelMarketData mktData, boolean fetchFlag) throws RuntimeException{
 
         try {
             JSONObject payload = new JSONObject();
             payload.put("mode", mktData.getMode());
             JSONObject exchangeTokens = new JSONObject();
             JSONArray nseTokens = new JSONArray();
-            nseTokens.put(mktData.getSymbolToken());
+            if(fetchFlag) {
+                for(String symbolTokens : mktData.getListOfSymbols()){
+                    nseTokens.put(symbolTokens);
+                }
+            } else {
+                nseTokens.put(mktData.getSymbolToken());
+            }
             exchangeTokens.put(mktData.getExchange(), nseTokens);
             payload.put("exchangeTokens", exchangeTokens);
             ObjectMapper objectMapper = new ObjectMapper();
             TypeReference<List<AngelMarketData>> jacksonTypeReference = new TypeReference<List<AngelMarketData>>() {};
             List<AngelMarketData> marketData = objectMapper.readValue(String.valueOf(tsqcoConfig.getSmartConnect()
                     .marketData(payload).get("fetched")), jacksonTypeReference);
-            return marketData.get(0);
+            return marketData;
         } catch (SmartAPIException e) {
             throw new RuntimeException(e);
         } catch (JsonMappingException e) {

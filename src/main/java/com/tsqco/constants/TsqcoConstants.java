@@ -15,4 +15,5 @@ public class TsqcoConstants {
     public static final int MAX_RETRIES = 5;
     public static final String BASE_DIR = "static";
     public static final String TMP_FILE_NAME = "/token.txt";
+    public static String FEED_TOKEN="";
 }

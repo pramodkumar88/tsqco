@@ -24,18 +24,17 @@ import java.util.Map;
 @RestController
 @RequestMapping(value = "/tsqco")
 @AllArgsConstructor
+@CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
 public class TsqcoDashBoardController {
 
     private final TsqcoDashBoardService tsqcoDashBoardService;
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/portfolio", produces = "application/json")
     public ResponseEntity<List<Holding>> getKitePortfolio() throws KiteException {
         List<Holding> userPortfolio = tsqcoDashBoardService.getKitePortfolio();
         return new ResponseEntity<>(userPortfolio, HttpStatus.OK);
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/angel/portfolio", produces = "application/json")
     public ResponseEntity<AngelTotalHolding> getAngelPortfolio() throws SmartAPIException {
         AngelTotalHolding angelPortfolio = tsqcoDashBoardService.getAngelPortfolio();
@@ -47,21 +46,18 @@ public class TsqcoDashBoardController {
         tsqcoDashBoardService.loadAllTheInstruments();
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
-    @GetMapping(value="/angel/allinstruments")
+    @GetMapping(value="/angel/loadinstruments")
     public ResponseEntity<String>  getAllAngelInstrumentsLoaded() throws SmartAPIException, InterruptedException {
         String status = tsqcoDashBoardService.loadAllAngelInstruments();
         return new ResponseEntity<>(status, HttpStatus.OK);
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @PostMapping(value="/angel/marketdata")
     public ResponseEntity<AngelMarketData>  getMarketData(@RequestBody AngelMarketData marketdata) throws SmartAPIException {
-        AngelMarketData marketData = tsqcoDashBoardService.getMarketData(marketdata);
-        return new ResponseEntity<>(marketData, HttpStatus.OK);
+        List<AngelMarketData> marketData = tsqcoDashBoardService.getMarketData(marketdata, false);
+        return new ResponseEntity<>(marketData.get(0), HttpStatus.OK);
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @PostMapping(value="/angel/gainers-losers")
     public ResponseEntity<List<AngelGainersLosers>> getGainersAndLosers(@RequestBody Map<String, Object> request) throws ParseException {
         String targetDate = (String) request.get("target_date");
@@ -70,6 +66,4 @@ public class TsqcoDashBoardController {
         List<AngelGainersLosers> result = tsqcoDashBoardService.getTopGainersAndLosers(targetDate, topN, avgFlag);
         return ResponseEntity.ok(result);
     }
-
-
 }

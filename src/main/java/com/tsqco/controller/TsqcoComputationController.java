@@ -27,13 +27,13 @@ import java.util.List;
 @RequestMapping(value = "/tsqco")
 @Slf4j
 @AllArgsConstructor
+@CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
 public class TsqcoComputationController {
 
     private final TsqcoComputationService computationService;
 
     private final TsqcoProperties tsqcoProps;
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/angel/computation", produces = "application/json")
     public void getCompute(@RequestParam String tradingSymbol,
                            @RequestParam("fromdate") @DateTimeFormat(pattern = "dd-MM-yyyy") Date fromDate,
@@ -41,7 +41,6 @@ public class TsqcoComputationController {
         computationService.getCompute(tradingSymbol, fromDate, toDate);
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/angel/search", produces = "application/json")
     public  List<TsqcoAngelInstruments> searchResult(@RequestParam String tradingsymbol,
                                                      @RequestParam(defaultValue = "ALL") String exsegment) {

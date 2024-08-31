@@ -22,7 +22,7 @@ public interface TsqcoDashBoardService {
 
     String  loadAllAngelInstruments() throws InterruptedException;
 
-    AngelMarketData getMarketData(AngelMarketData marketData);
+    List<AngelMarketData> getMarketData(AngelMarketData marketData, boolean fetchFlag);
 
     List<AngelGainersLosers> getTopGainersAndLosers(String targetDate, int topN, boolean avgFlag) throws ParseException;
 }

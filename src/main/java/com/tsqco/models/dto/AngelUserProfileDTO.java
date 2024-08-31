@@ -22,6 +22,4 @@ public class AngelUserProfileDTO {
     private String[] products;
     private String[] exchanges;
     private String feedToken;
-
-
 }

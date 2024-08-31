@@ -66,17 +66,17 @@ public class TsqcoConfig {
             com.angelbroking.smartapi.models.User userWithRetry = getUserWithRetry(gAuth, smartConnect);
             tsqcoFileService.writeToFile(BASE_DIR+TMP_FILE_NAME,
                     userWithRetry.accessToken+","+userWithRetry.refreshToken );
+            FEED_TOKEN = userWithRetry.getFeedToken();
             smartConnect.setAccessToken(userWithRetry.accessToken);
             smartConnect.setRefreshToken(userWithRetry.refreshToken);
+
         } catch (Exception ex) {
             log.error("Session is expired !! {}", ex);
             String tokens = tsqcoFileService.readFromFile(BASE_DIR + TMP_FILE_NAME);
             String token[] = tokens.split(",");
             TokenSet tokenSet = smartConnect.renewAccessToken(token[0], token[1]);
             smartConnect.setAccessToken(tokenSet.accessToken);
-
             smartConnect.setRefreshToken(tokenSet.refreshToken);
-
             log.debug("Access Token Successfully renewed");
             return smartConnect;
         }

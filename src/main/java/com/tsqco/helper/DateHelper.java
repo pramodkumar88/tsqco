@@ -3,10 +3,7 @@ package com.tsqco.helper;
 import lombok.extern.slf4j.Slf4j;
 
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.Calendar;
 import java.util.Date;
@@ -34,6 +31,13 @@ public class DateHelper {
 
     public static boolean timeRangeCheck(String timestamp) {
         log.debug("Instrument last loaded {}",timestamp);
+
+        DayOfWeek dayOfWeek = LocalDateTime.now().getDayOfWeek();
+        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+            log.debug("Today is Saturday or Sunday, skipping not load data.");
+            return true;
+        }
+
         ZoneId istZone = ZoneId.of("Asia/Kolkata");
         ZonedDateTime now = ZonedDateTime.now(istZone);
         ZonedDateTime lastLoadedTime = ZonedDateTime.parse(timestamp);

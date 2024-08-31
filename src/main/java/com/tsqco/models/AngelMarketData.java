@@ -5,12 +5,14 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.deser.std.DateDeserializers;
+import com.fasterxml.jackson.databind.deser.std.StringDeserializer;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.sql.Timestamp;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Setter
@@ -50,6 +52,7 @@ public class AngelMarketData {
     private String mode;
     private Float fiftyTwoWeekLows;
     private Float fiftyTwoWeekHighs;
+    private List<String> listOfSymbols;
 
     public Float getFiftyTwoWeekLows() {
         fiftyTwoWeekLows = this.fiftyTwoWeekLow;
@@ -64,6 +67,12 @@ public class AngelMarketData {
     public AngelMarketData(String exchange, String symbolToken, String mode){
         this.exchange = exchange;
         this.symbolToken = symbolToken;
+        this.mode= mode;
+    }
+
+    public AngelMarketData(String exchange, List listOfSymbols, String mode){
+        this.exchange = exchange;
+        this.listOfSymbols = listOfSymbols;
         this.mode= mode;
     }
 }

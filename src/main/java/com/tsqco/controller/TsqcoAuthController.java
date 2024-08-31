@@ -22,13 +22,13 @@ import java.io.IOException;
 @RequestMapping(value = "/tsqco")
 @Slf4j
 @AllArgsConstructor
+@CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
 public class TsqcoAuthController {
 
     private final TsqcoAuthService tsqcoService;
 
     private final TsqcoProperties tsqcoProps;
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/auth", produces = "application/json")
     public ResponseEntity<Profile> userAuth(@RequestParam String token) throws KiteException, IOException {
         tsqcoProps.setKiteRequestToken(token);
@@ -36,7 +36,6 @@ public class TsqcoAuthController {
         return new ResponseEntity<>(profile, HttpStatus.OK);
     }
 
-    @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
     @GetMapping(value = "/angel/auth", produces = "application/json")
     public ResponseEntity<AngelUserProfileDTO> angelAuth() throws SmartAPIException {
         AngelUserProfileDTO user = tsqcoService.getProfile();

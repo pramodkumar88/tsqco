@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.Date;
 
+import static com.tsqco.constants.TsqcoConstants.FEED_TOKEN;
+
 @Service
 @Slf4j
 public class TsqcoAuthServiceImpl implements TsqcoAuthService {
@@ -50,7 +52,7 @@ public class TsqcoAuthServiceImpl implements TsqcoAuthService {
                         smartConnect.getPublicToken(),
                         profile.getProducts(),
                         profile.getExchanges(),
-                        profile.getFeedToken());
+                        FEED_TOKEN);
        return angelUserProfileDTO;
     }
 }
