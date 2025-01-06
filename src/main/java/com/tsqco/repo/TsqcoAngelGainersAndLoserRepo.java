@@ -3,6 +3,7 @@ package com.tsqco.repo;
 import com.tsqco.models.AngelGainersLosers;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.keyvalue.repository.KeyValueRepository;
 import org.springframework.data.repository.query.Param;
 
 import java.sql.Date;

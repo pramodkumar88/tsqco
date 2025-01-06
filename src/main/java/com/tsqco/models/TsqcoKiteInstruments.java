@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.Min;
 import lombok.*;
+import org.springframework.data.redis.core.RedisHash;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.Date;

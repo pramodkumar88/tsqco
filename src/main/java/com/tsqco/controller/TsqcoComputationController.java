@@ -2,26 +2,24 @@ package com.tsqco.controller;
 
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
-import com.tsqco.config.TsqcoProperties;
 import com.tsqco.constants.TsqcoConstants;
+import com.tsqco.helper.CacheHelper;
+import com.tsqco.helper.ScheduleManager;
 import com.tsqco.models.TsqcoAngelInstruments;
-import com.tsqco.models.dto.TsqcoInstrumentDTO;
+import com.tsqco.models.dto.AngelBackTestDTO;
+import com.tsqco.models.dto.AngelCandleStickRequestDTO;
+import com.tsqco.models.dto.AngelCandleStickResponseDTO;
 import com.tsqco.service.TsqcoComputationService;
-import com.tsqco.service.TsqcoDashBoardService;
-import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
-import com.zerodhatech.models.Holding;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
-import java.time.LocalDate;
-import java.util.Date;
 import java.util.List;
+import java.util.Set;
+
+import static com.tsqco.constants.TsqcoConstants.STOCK_ANALYSIS_CHANNEL;
 
 @RestController
 @RequestMapping(value = "/tsqco")
@@ -32,13 +30,15 @@ public class TsqcoComputationController {
 
     private final TsqcoComputationService computationService;
 
-    private final TsqcoProperties tsqcoProps;
+    private final StringRedisTemplate redisTemplate;
 
-    @GetMapping(value = "/angel/computation", produces = "application/json")
-    public void getCompute(@RequestParam String tradingSymbol,
-                           @RequestParam("fromdate") @DateTimeFormat(pattern = "dd-MM-yyyy") Date fromDate,
-                           @RequestParam("todate") @DateTimeFormat(pattern = "dd-MM-yyyy") Date toDate) throws SmartAPIException, IOException {
-        computationService.getCompute(tradingSymbol, fromDate, toDate);
+    private final CacheHelper cacheHelper;
+
+    private final ScheduleManager scheduleManager;
+
+    @PostMapping(value = "/angel/candlestickdata", produces = "application/json")
+    public List<AngelCandleStickResponseDTO> getCandleStickData(@RequestBody AngelCandleStickRequestDTO candleStickRequest) throws SmartAPIException, IOException {
+        return computationService.getCandleStickData(candleStickRequest);
     }
 
     @GetMapping(value = "/angel/search", produces = "application/json")
@@ -48,5 +48,37 @@ public class TsqcoComputationController {
     }
 
 
+    @PostMapping(value="/angel/backtesting", produces = "application/json")
+    public void backTest(@RequestBody AngelBackTestDTO backTest) throws SmartAPIException, IOException {
+        computationService.getBackTestResult(backTest);
+    }
+
+    @GetMapping("/angel/loadepsdata")
+    public String loadEPSData() throws Exception {
+        try {
+            computationService.loadEpsData();
+        } catch (Exception ex) {
+            return "Error Occurred: "+ex.getMessage();
+        }
+        return "EPS Data sucessfully loaded";
+    }
+
+    @GetMapping("/angel/buystockrecommendatation")
+    public void getBuyStockRecommendation(){
+        Set<String> tokens = cacheHelper.getKeys("*");
+        for (String token : tokens) {
+            redisTemplate.convertAndSend(STOCK_ANALYSIS_CHANNEL,token);
+        }
+    }
+
+    @GetMapping("/angel/backtest/initlizemarketsession")
+    public void initializeMarketSession() throws SmartAPIException, IOException {
+        scheduleManager.initializeMarketSession();
+    }
+
+    @GetMapping("/angel/backtest/analyzesubscriptions")
+    public void analyzeAndUpdateSubscriptions() throws SmartAPIException, IOException {
+        scheduleManager.analyzeAndUpdateSubscriptions();
+    }
 
 }

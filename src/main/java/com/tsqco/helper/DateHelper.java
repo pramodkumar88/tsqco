@@ -33,8 +33,8 @@ public class DateHelper {
         log.debug("Instrument last loaded {}",timestamp);
 
         DayOfWeek dayOfWeek = LocalDateTime.now().getDayOfWeek();
-        if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
-            log.debug("Today is Saturday or Sunday, skipping not load data.");
+        if (dayOfWeek == DayOfWeek.SUNDAY) {
+            log.debug("Today is Sunday, skipping not load data.");
             return true;
         }
 

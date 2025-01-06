@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.redis.core.RedisHash;
 
 import java.math.BigInteger;
 import java.time.LocalDateTime;
@@ -32,4 +33,5 @@ public class TsqcoAngelInstruments {
     private Float percentagechange;
     private Float ltp;
     private LocalDateTime intrumentdate;
+    private Float eps;
 }

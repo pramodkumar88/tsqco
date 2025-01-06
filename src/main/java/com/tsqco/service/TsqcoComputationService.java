@@ -2,17 +2,28 @@ package com.tsqco.service;
 
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.tsqco.models.TsqcoAngelInstruments;
-import com.tsqco.models.dto.TsqcoInstrumentDTO;
-import jakarta.servlet.http.HttpServletResponse;
+import com.tsqco.models.dto.*;
 
 import java.io.IOException;
-import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 public interface TsqcoComputationService {
 
-    void getCompute(String tradingsymbol, Date fromDate, Date toDate) throws SmartAPIException, IOException;
+    List<AngelCandleStickResponseDTO> getCandleStickData(AngelCandleStickRequestDTO candleStickDataDTO) throws SmartAPIException, IOException;
 
     List<TsqcoAngelInstruments> getSearchResults(String tradingSymbol, String exSegment);
+
+    void getBackTestResult(AngelBackTestDTO backTest) throws SmartAPIException, IOException;
+
+    void loadEpsData() throws Exception;
+
+    String analyzeBuyorHoldStock(Map<String, List<String>> stockData);
+
+    String analyzeSellorHoldStock(Map<String, List<String>> stockData);
+
+    void handleRecommendation(AngelRecommendationDataDTO recommendationData);
+
+    public void analyzeStockData(String token);
 }
 

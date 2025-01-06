@@ -15,5 +15,8 @@ public class TsqcoConstants {
     public static final int MAX_RETRIES = 5;
     public static final String BASE_DIR = "static";
     public static final String TMP_FILE_NAME = "/token.txt";
+    public static final String STOCK_ANALYSIS_CHANNEL = "stockAnalysisChannel";
+    public static final String STOCK_DATA_CHANNEL = "stockDataChannel";
     public static String FEED_TOKEN="";
+    public static final String PURCHASED_STOCK_PREFIX = "purchasedStock:";
 }

@@ -1,6 +1,20 @@
 spring:
+   webflux:
+      base-path:/
+   ai:
+      ollama:
+         chat:
+            options:
+                model: buyholdsellassistant
+                format: json
+      init:
+         pull-model-strategy: if-not-exists
+         timeout: 60s
+         max-retries: 2
    application:
       name: tsqco
+   profiles:
+      active: default
    jackson:
       serialization.write_dates_as_timestamps: false
       time-zone: Asia/Kolkata
@@ -21,11 +35,21 @@ spring:
                time_zone: Asia/Kolkata
             order_inserts: true
             format_sql: true
-
+   redis:
+      host: localhost
+      port: 6379
+      password:
    server:
       port: 8080
    codec:
       max-in-memory-size: 25000KB
+management:
+   endpoints:
+      web:
+         exposure:
+            include: refresh
+      refresh:
+         enabled: true
 logging:
    config: classpath:logback.xml
    level:
@@ -36,5 +60,14 @@ tsqco:
    kiteApiKey: ${KITE_API_KEY}
    kiteSecretKey: ${KITE_SECRET_KEY}
    kiteUserId: ${KITE_USER_ID}
-
-
+google:
+   spreadsheetid: 10gcqon92pcJDOFuneGS5wquNu9Jtmf-SvIXuhS7_gm0
+telegram:
+   appURL: https://api.telegram.org
+   botKey: 7889027775:AAFECmBUEbJykoHuw8D3XAoR5EiZHtheqpA
+   chatID: 6284688412
+ollama:
+   appURL: http://localhost:11434/api/generate
+angel:
+   appURL:
+      margincalculator: https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json
