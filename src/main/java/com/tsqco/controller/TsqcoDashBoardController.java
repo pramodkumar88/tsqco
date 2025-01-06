@@ -11,6 +11,7 @@ import com.tsqco.service.TsqcoDashBoardService;
 import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
 import com.zerodhatech.models.Holding;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,7 @@ import java.util.Map;
 @RequestMapping(value = "/tsqco")
 @AllArgsConstructor
 @CrossOrigin(origins = TsqcoConstants.LOCALHOST_WEB)
+@Slf4j
 public class TsqcoDashBoardController {
 
     private final TsqcoDashBoardService tsqcoDashBoardService;
@@ -51,10 +53,13 @@ public class TsqcoDashBoardController {
     }
 
     @GetMapping(value="/angel/loadinstruments")
-    public ResponseEntity<String>  getAllAngelInstrumentsLoaded() throws SmartAPIException, InterruptedException {
-
-        String status = tsqcoDashBoardService.loadAllAngelInstruments();
-
+    public ResponseEntity<String>  getAllAngelInstrumentsLoaded() {
+        String status="";
+        try {
+             status = tsqcoDashBoardService.loadAllAngelInstruments();
+        } catch (Exception ex) {
+            log.error("Exception occurred during loading of Instruments. "+ex.getMessage());
+        }
         return new ResponseEntity<>(status, HttpStatus.OK);
     }
 
@@ -82,9 +87,7 @@ public class TsqcoDashBoardController {
     public void getMarketDataBatch(SmartConnect smartConnect, String tokensString) throws SmartAPIException, IOException {
         // Split the string into individual tokens and convert to a List
         List<String> tokens = Arrays.asList(tokensString.split(",\\s*"));
-
         JSONObject aggregatedMarketData = new JSONObject();
-
         // Define batch size
         int batchSize = 50;
 

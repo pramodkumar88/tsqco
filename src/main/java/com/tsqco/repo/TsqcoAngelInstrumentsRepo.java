@@ -1,13 +1,12 @@
 package com.tsqco.repo;
 
 import com.tsqco.models.TsqcoAngelInstruments;
-import com.tsqco.models.dto.TsqcoEpsDTO;
+import com.tsqco.models.dto.TsqcoInstrumentByEquityDTO;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.query.Procedure;
-import org.springframework.data.keyvalue.repository.KeyValueRepository;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigInteger;
@@ -24,10 +23,11 @@ public interface TsqcoAngelInstrumentsRepo extends JpaRepository<TsqcoAngelInstr
     @Procedure(procedureName = "tsqco.backup_and_clean_tsqco_angel_instruments")
     void callBackupAndCleanInstruments();
 
-    @Query("SELECT new com.tsqco.models.dto.TsqcoEpsDTO(t.instrument_id, t.name) " +
-            "FROM TsqcoAngelInstruments t " +
-            "WHERE t.symbol LIKE %:suffix")
-    List<TsqcoEpsDTO> findInstrumentsBySymbolSuffix(@Param("suffix") String suffix);
+    @Query("SELECT new com.tsqco.models.dto.TsqcoInstrumentByEquityDTO(t.instrument_id, "
+            + "t.name, t.token, t.symbol, t.exchseg, t.ltp) "
+            + "FROM TsqcoAngelInstruments t "
+            + "WHERE t.symbol LIKE CONCAT('%', :suffix)")
+    List<TsqcoInstrumentByEquityDTO> findInstrumentsBySymbolSuffix(@Param("suffix") String suffix);
 
     @Transactional
     @Modifying
@@ -35,6 +35,10 @@ public interface TsqcoAngelInstrumentsRepo extends JpaRepository<TsqcoAngelInstr
     void updateEpsByName(@Param("name") String name, @Param("eps") Float eps);
 
 
+    @Modifying
+    @Transactional
+    @Query("UPDATE TsqcoAngelInstruments SET ltp = :ltp WHERE instrument_id = :instrumentId")
+    void updateLTPById(@Param("ltp") Float ltp, @Param("instrumentId") Long instrumentId);
 
 
     @Transactional
@@ -52,7 +56,7 @@ public interface TsqcoAngelInstrumentsRepo extends JpaRepository<TsqcoAngelInstr
     @Query(value = "SELECT tsqco.manage_instruments_table()", nativeQuery = true)
     void manageInstrumentsTable();
 
-    @Query("SELECT t.token, t.ltp FROM TsqcoAngelInstruments t WHERE t.symbol LIKE %:pattern")
-    List<Object[]> findTokenAndLtpBySymbolPattern(@Param("pattern") String pattern);
+    /*@Query("SELECT t.token, t.ltp FROM TsqcoAngelInstruments t WHERE t.symbol LIKE %:pattern")
+    List<Object[]> findTokenAndLtpBySymbolPattern(@Param("pattern") String pattern);*/
 
 }

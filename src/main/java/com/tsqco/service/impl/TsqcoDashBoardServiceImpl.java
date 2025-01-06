@@ -14,10 +14,12 @@ import com.tsqco.constants.TsqcoConstants;
 import com.tsqco.helper.CacheHelper;
 import com.tsqco.helper.DateHelper;
 import com.tsqco.models.*;
+import com.tsqco.models.dto.TsqcoInstrumentByEquityDTO;
 import com.tsqco.repo.TsqcoAngelAppConfigRepo;
 import com.tsqco.repo.TsqcoAngelGainersAndLoserRepo;
 import com.tsqco.repo.TsqcoAngelInstrumentsRepo;
 import com.tsqco.repo.TsqcoKiteInstrumentsRepo;
+import com.tsqco.service.TsqcoAngelAppConfigService;
 import com.tsqco.service.TsqcoDashBoardService;
 import com.tsqco.service.TsqcoStockSubscriptionService;
 import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
@@ -37,10 +39,9 @@ import java.io.IOException;
 import java.sql.Date;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
 import static com.tsqco.constants.TsqcoConstants.*;
@@ -53,6 +54,8 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
     private final TsqcoProperties tsqcoProps;
 
     private final TsqcoConfig tsqcoConfig;
+
+    private final TsqcoAngelAppConfigService tsqcoAngelAppConfigService;
 
     private final CacheHelper cacheHelper;
 
@@ -321,105 +324,103 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
     }
 
     @Override
-    public List<Object[]> findTokenAndLtpBySymbolPattern() {
-        return tsqcoAngelInstrumentsRepo.findTokenAndLtpBySymbolPattern("%-EQ");
-    }
-
-    @Override
-    public void fetchAndStoreTokens() {
-        List<Object[]> equityTokens = findTokenAndLtpBySymbolPattern();
-        for (Object[] token : equityTokens) {
-            // Assuming token[0] is the symbol and token[1] is the LTP
-            String symbol = token[0].toString();
-            if(token[1] == null){
-                log.info(symbol);
+    public void fetchAndStoreTokens() throws RuntimeException {
+        try {
+            List<TsqcoInstrumentByEquityDTO> equityTokens = tsqcoAngelInstrumentsRepo.findInstrumentsBySymbolSuffix("-EQ");
+            for (TsqcoInstrumentByEquityDTO token : equityTokens) {
+                String symbol = token.getToken();
+                if(token.getLtp() > 0 && symbol != null){
+                    cacheHelper.saveTokenData(REDIS_KEY_PREFIX + symbol, token.getLtp().toString(), TTL_SECONDS);
+                }
             }
-            String ltp = (token[1] != null) ? token[1].toString() : "0";
-
-            // Save the token data in Redis with the appropriate key and value
-            cacheHelper.saveTokenData(REDIS_KEY_PREFIX + symbol, ltp, TTL_SECONDS);
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
         }
     }
 
 
     @Override
-    public void processInitialSubscriptions() throws SmartAPIException, IOException {
-        Map<String, Double> tokenChanges = fetchAndCalculatePercentageChanges();
+    public void processInitialSubscriptions() throws RuntimeException {
+        try {
+            Map<String, Double> tokenChanges = fetchAndCalculatePercentageChanges();
 
-        // Sort by percentage change
-        List<Map.Entry<String, Double>> sortedTokens = tokenChanges.entrySet().stream()
-                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .collect(Collectors.toList());
-
-        // Top 5 positive tokens
-        List<Map.Entry<String, Double>> positiveTokens = sortedTokens.stream()
-                .filter(entry -> entry.getValue() > 3.0) // Filter tokens with percentage change > 3%
-                .collect(Collectors.toList());
-
-        // If no tokens have a percentage change > 3%, take the top 5 tokens
-        if (positiveTokens.isEmpty()) {
-            positiveTokens = sortedTokens.stream()
-                    .limit(5) // Select the top 5 tokens with the highest percentage change
-                    .collect(Collectors.toList());
-        } else if (positiveTokens.size() < 5) {
-            // Find the remaining tokens needed to make the count 5
-            int additionalTokensNeeded = 5 - positiveTokens.size();
-            // Add the next top tokens from the sorted list that are not already in the positiveTokens list
-            List<Map.Entry<String, Double>> finalPositiveTokens = positiveTokens;
-            List<Map.Entry<String, Double>> additionalTokens = sortedTokens.stream()
-                    .filter(entry -> !finalPositiveTokens.contains(entry)) // Exclude already selected tokens
-                    .limit(additionalTokensNeeded) // Select only the required number of additional tokens
+            // Sort by percentage change
+            List<Map.Entry<String, Double>> sortedTokens = tokenChanges.entrySet().stream()
+                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
                     .collect(Collectors.toList());
 
-            // Combine the positiveTokens with the additionalTokens
-            positiveTokens.addAll(additionalTokens);
-        } else if (positiveTokens.size() > 5) {
-            // Collect all tokens to check LTP in batch
-            List<String> tokens = positiveTokens.stream()
-                    .map(Map.Entry::getKey) // Extract token keys
+            // Top 5 positive tokens
+            List<Map.Entry<String, Double>> positiveTokens = sortedTokens.stream()
+                    .filter(entry -> entry.getValue() > 3.0) // Filter tokens with percentage change > 3%
                     .collect(Collectors.toList());
 
-            // Fetch LTPs for these tokens in batch
-            JSONObject marketData = getMarketDataBatch(String.join(",", tokens)); // Batch API call
-            Map<String, Double> ltpMap = extractLtpMap(marketData); // Extract LTP data into a map
-
-            // Initialize LTP threshold
-            double ltpThreshold = 500;
-            List<Map.Entry<String, Double>> filteredTokens;
-
-            // Gradually increase LTP threshold until we have at least 5 tokens
-            do {
-                double finalLtpThreshold = ltpThreshold;
-                filteredTokens = positiveTokens.stream()
-                        .filter(entry -> ltpMap.getOrDefault(entry.getKey(), Double.MAX_VALUE) < finalLtpThreshold) // Apply LTP filter
+            // If no tokens have a percentage change > 3%, take the top 5 tokens
+            if (positiveTokens.isEmpty()) {
+                positiveTokens = sortedTokens.stream()
+                        .limit(5) // Select the top 5 tokens with the highest percentage change
                         .collect(Collectors.toList());
-                ltpThreshold += 500; // Increment LTP threshold
-            } while (filteredTokens.size() < 5 && ltpThreshold <= 5000); // Limit the threshold to prevent infinite loop
+            } else if (positiveTokens.size() < 5) {
+                // Find the remaining tokens needed to make the count 5
+                int additionalTokensNeeded = 5 - positiveTokens.size();
+                // Add the next top tokens from the sorted list that are not already in the positiveTokens list
+                List<Map.Entry<String, Double>> finalPositiveTokens = positiveTokens;
+                List<Map.Entry<String, Double>> additionalTokens = sortedTokens.stream()
+                        .filter(entry -> !finalPositiveTokens.contains(entry)) // Exclude already selected tokens
+                        .limit(additionalTokensNeeded) // Select only the required number of additional tokens
+                        .collect(Collectors.toList());
 
-            // Select up to 5 tokens
-            positiveTokens = filteredTokens.stream()
-                    .limit(5)
-                    .collect(Collectors.toList());
+                // Combine the positiveTokens with the additionalTokens
+                positiveTokens.addAll(additionalTokens);
+            } else if (positiveTokens.size() > 5) {
+                // Collect all tokens to check LTP in batch
+                List<String> tokens = positiveTokens.stream()
+                        .map(Map.Entry::getKey) // Extract token keys
+                        .collect(Collectors.toList());
+
+                // Fetch LTPs for these tokens in batch
+                JSONObject marketData = getMarketDataBatch(String.join(",", tokens)); // Batch API call
+                Map<String, Double> ltpMap = extractLtpMap(marketData); // Extract LTP data into a map
+
+                // Initialize LTP threshold
+                double ltpThreshold = 500;
+                List<Map.Entry<String, Double>> filteredTokens;
+
+                // Gradually increase LTP threshold until we have at least 5 tokens
+                do {
+                    double finalLtpThreshold = ltpThreshold;
+                    filteredTokens = positiveTokens.stream()
+                            .filter(entry -> ltpMap.getOrDefault(entry.getKey(), Double.MAX_VALUE) < finalLtpThreshold) // Apply LTP filter
+                            .collect(Collectors.toList());
+                    ltpThreshold += 500; // Increment LTP threshold
+                } while (filteredTokens.size() < 5 && ltpThreshold <= 5000); // Limit the threshold to prevent infinite loop
+
+                // Select up to 5 tokens
+                positiveTokens = filteredTokens.stream()
+                        .limit(5)
+                        .collect(Collectors.toList());
+            }
+
+            // 1 token with maximum negative change
+            Map.Entry<String, Double> maxNegativeToken = sortedTokens.stream()
+                    .min(Map.Entry.comparingByValue())
+                    .orElse(null);
+
+            Set<TokenID> tokenSet = new HashSet<>();
+            for (Map.Entry<String, Double> token : positiveTokens) {
+                tokenSet.add(new TokenID(ExchangeType.NSE_CM, token.getKey()));
+                subscribedTokens.put(token.getKey(), token.getValue());
+            }
+            subscribeTokenForStreaming(tokenSet);
+            tokenSet = new HashSet<>();
+
+            if (maxNegativeToken != null) {
+                tokenSet.add(new TokenID(ExchangeType.NSE_CM, maxNegativeToken.getKey()));
+                subscribedTokens.put(maxNegativeToken.getKey(), maxNegativeToken.getValue());
+            }
+            subscribeTokenForStreaming(tokenSet);
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
         }
-
-        // 1 token with maximum negative change
-        Map.Entry<String, Double> maxNegativeToken = sortedTokens.stream()
-                .min(Map.Entry.comparingByValue())
-                .orElse(null);
-
-        Set<TokenID> tokenSet = new HashSet<>();
-        for(Map.Entry<String, Double> token : positiveTokens){
-            tokenSet.add(new TokenID(ExchangeType.NSE_CM, token.getKey()));
-            subscribedTokens.put(token.getKey(), token.getValue());
-        }
-        subscribeTokenForStreaming(tokenSet);
-        tokenSet = new HashSet<>();
-
-        if (maxNegativeToken != null) {
-            tokenSet.add(new TokenID(ExchangeType.NSE_CM, maxNegativeToken.getKey()));
-            subscribedTokens.put(maxNegativeToken.getKey(), maxNegativeToken.getValue());
-        }
-        subscribeTokenForStreaming(tokenSet);
     }
 
     private Map<String, Double> extractLtpMap(JSONObject marketData) {
@@ -441,130 +442,143 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
         return ltpMap;
     }
 
-    private Map<String, Double> fetchAndCalculatePercentageChanges() throws SmartAPIException, IOException {
-        // Step 1: Fetch all keys from Redis
-        Set<String> keys = cacheHelper.getAllKeys(REDIS_KEY_PREFIX + "*");
-        Map<String, Double> tokenChanges = new HashMap<>();
+    private Map<String, Double> fetchAndCalculatePercentageChanges() throws RuntimeException {
+       try {
+           // Step 1: Fetch all keys from Redis
+           Set<String> keys = cacheHelper.getAllKeys(REDIS_KEY_PREFIX + "*");
+           Map<String, Double> tokenChanges = new HashMap<>();
 
-        if (keys.isEmpty()) {
-            return tokenChanges; // No keys to process
-        }
+           if (keys.isEmpty()) {
+               return tokenChanges; // No keys to process
+           }
 
-        // Step 2: Extract symbols from keys
-        List<String> symbols = keys.stream()
-                .map(key -> key.replace(REDIS_KEY_PREFIX, ""))
-                .toList();
+           // Step 2: Extract symbols from keys
+           List<String> symbols = keys.stream()
+                   .map(key -> key.replace(REDIS_KEY_PREFIX, ""))
+                   .toList();
 
-        // Step 3: Fetch market data in batches
-        JSONObject marketData = getMarketDataBatch(String.join(",", symbols));
+           // Step 3: Fetch market data in batches
+           JSONObject marketData = getMarketDataBatch(String.join(",", symbols));
 
-        // Step 4: Process market data and calculate percentage changes
-        // The response from getMarketDataBatch() contains "fetched" as an array
-        JSONArray fetchedData = marketData.getJSONArray("fetched");
+           // Step 4: Process market data and calculate percentage changes
+           // The response from getMarketDataBatch() contains "fetched" as an array
+           JSONArray fetchedData = marketData.getJSONArray("fetched");
 
-        for (Object obj : fetchedData) {
-            JSONObject tokenData = (JSONObject) obj;
-            String tradingSymbol = tokenData.getString("symbolToken");
-            Double newLTP = tokenData.getDouble("ltp");
+           for (Object obj : fetchedData) {
+               JSONObject tokenData = (JSONObject) obj;
+               String tradingSymbol = tokenData.getString("symbolToken");
+               Double newLTP = tokenData.getDouble("ltp");
 
-            // Step 5: Check if this symbol is in the Redis cache
-            String redisKey = REDIS_KEY_PREFIX + tradingSymbol;
-            String oldLTPStr = cacheHelper.getTokenData(redisKey);
+               // Step 5: Check if this symbol is in the Redis cache
+               String redisKey = REDIS_KEY_PREFIX + tradingSymbol;
+               String oldLTPStr = cacheHelper.getTokenData(redisKey);
 
-            if (oldLTPStr != null) {
-                Double oldLTP = Double.parseDouble(oldLTPStr);
+               if (oldLTPStr != null) {
+                   Double oldLTP = Double.parseDouble(oldLTPStr);
 
-                if (oldLTP != null && newLTP != null) {
-                    Double percentageChange = ((newLTP - oldLTP) / oldLTP) * 100;
-                    tokenChanges.put(tradingSymbol, percentageChange);
-                }
-            }
-        }
-        long elapsedTime = System.currentTimeMillis() - tsqcoConfig.getMarketOpenTime();
-        if (elapsedTime >= 60 * 60 * 1000 && elapsedTime < 70 * 60 * 1000) {
-                // After filtering and sorting to get top 300 positive percentage tokens
-                List<Map.Entry<String, Double>> topTokens = tokenChanges.entrySet().stream()
-                        .filter(entry -> entry.getValue() > 0)
-                        .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                        .limit(300)
-                        .collect(Collectors.toList());
+                   if (oldLTP > 0 && newLTP > 0 ) {
+                       Double percentageChange = ((newLTP - oldLTP) / oldLTP) * 100;
+                       tokenChanges.put(tradingSymbol, percentageChange);
+                   }
+               }
+           }
+           long elapsedTime = System.currentTimeMillis() -
+                   Long.parseLong(tsqcoAngelAppConfigService.getConfigValue("markettimeopen"));
+           if (elapsedTime >= 60 * 60 * 1000 && elapsedTime < 70 * 60 * 1000) {
+               // After filtering and sorting to get top 300 positive percentage tokens
+               List<Map.Entry<String, Double>> topTokens = tokenChanges.entrySet().stream()
+                       .filter(entry -> entry.getValue() > 0)
+                       .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                       .limit(300)
+                       .collect(Collectors.toList());
 
-    // Fetch current LTP values for top tokens
-                Map<String, String> oldLTPValues = new HashMap<>();
-                for (Map.Entry<String, Double> entry : topTokens) {
-                    String symbol = entry.getKey();
-                    String oldLTP = cacheHelper.getTokenData(REDIS_KEY_PREFIX + symbol);
-                    if (oldLTP != null) {
-                        oldLTPValues.put(symbol, oldLTP);
-                    }
-            }
+               // Fetch current LTP values for top tokens
+               Map<String, String> oldLTPValues = new HashMap<>();
+               for (Map.Entry<String, Double> entry : topTokens) {
+                   String symbol = entry.getKey();
+                   String oldLTP = cacheHelper.getTokenData(REDIS_KEY_PREFIX + symbol);
+                   if (oldLTP != null) {
+                       oldLTPValues.put(symbol, oldLTP);
+                   }
+               }
 
 // Clear existing Redis cache
-            cacheHelper.removeTokenFromCache(REDIS_KEY_PREFIX + "*");
+               cacheHelper.removeTokenFromCache(REDIS_KEY_PREFIX + "*");
 
 // Update Redis with old LTP values for retained tokens
-            for (Map.Entry<String, Double> entry : topTokens) {
-                String symbol = entry.getKey();
-                String oldLTP = oldLTPValues.get(symbol);
-                if (oldLTP != null) {
-                    cacheHelper.saveTokenData(REDIS_KEY_PREFIX + symbol, oldLTP, TTL_SECONDS);
-                }
-            }
-        }
+               for (Map.Entry<String, Double> entry : topTokens) {
+                   String symbol = entry.getKey();
+                   String oldLTP = oldLTPValues.get(symbol);
+                   if (oldLTP != null) {
+                       cacheHelper.saveTokenData(REDIS_KEY_PREFIX + symbol, oldLTP, TTL_SECONDS);
+                   }
+               }
+           }
 
-        return tokenChanges;
+           return tokenChanges;
+       } catch (Exception ex) {
+           throw new RuntimeException(ex.getMessage());
+       }
     }
 
     @Override
-    public JSONObject getMarketDataBatch(String tokensString) throws SmartAPIException, IOException {
-        List<String> tokens = Arrays.asList(tokensString.split(",\\s*"));
-        JSONObject aggregatedMarketData = new JSONObject();
-        int batchSize = 50;
+    public JSONObject getMarketDataBatch(String tokensString) throws RuntimeException {
+        try {
+            List<String> tokens = Arrays.asList(tokensString.split(",\\s*"));
+            JSONObject aggregatedMarketData = new JSONObject();
+            int batchSize = 50;
 
-        // Initialize "fetched" as an empty array to accumulate all batch data
-        JSONArray fetchedData = new JSONArray();
+            // Initialize "fetched" as an empty array to accumulate all batch data
+            JSONArray fetchedData = new JSONArray();
 
-        for (int i = 0; i < tokens.size(); i += batchSize) {
-            List<String> batch = tokens.subList(i, Math.min(i + batchSize, tokens.size()));
-            JSONObject payload = new JSONObject();
-            payload.put("mode", "LTP");
+            for (int i = 0; i < tokens.size(); i += batchSize) {
+                List<String> batch = tokens.subList(i, Math.min(i + batchSize, tokens.size()));
+                JSONObject payload = new JSONObject();
+                payload.put("mode", "LTP");
 
-            JSONObject exchangeTokens = new JSONObject();
-            JSONArray nseTokens = new JSONArray(batch);
-            exchangeTokens.put("NSE", nseTokens);
-            payload.put("exchangeTokens", exchangeTokens);
+                JSONObject exchangeTokens = new JSONObject();
+                JSONArray nseTokens = new JSONArray(batch);
+                exchangeTokens.put("NSE", nseTokens);
+                payload.put("exchangeTokens", exchangeTokens);
 
-            JSONObject response = getMarketDataWithRetry(payload);
+                JSONObject response = getMarketDataWithRetry(payload);
 
-            // Append the "fetched" array from the current response to the accumulated fetchedData
-            fetchedData.putAll(response.getJSONArray("fetched"));
+                // Append the "fetched" array from the current response to the accumulated fetchedData
+                fetchedData.putAll(response.getJSONArray("fetched"));
+            }
+
+            // Put the accumulated data into the aggregatedMarketData
+            aggregatedMarketData.put("fetched", fetchedData);
+
+            return aggregatedMarketData;
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
         }
-
-        // Put the accumulated data into the aggregatedMarketData
-        aggregatedMarketData.put("fetched", fetchedData);
-
-        return aggregatedMarketData;
     }
 
-    private JSONObject getMarketDataWithRetry(JSONObject payload) throws SmartAPIException, IOException {
-        int maxRetries = 3;
-        long retryDelay = 1000; // Start with 1 second delay
+    private JSONObject getMarketDataWithRetry(JSONObject payload) throws RuntimeException {
+        try {
+            int maxRetries = 3;
+            long retryDelay = 1000; // Start with 1 second delay
 
-        for (int attempt = 0; attempt < maxRetries; attempt++) {
-            try {
-                return tsqcoConfig.getSmartConnect().marketData(payload);
-            } catch (IOException e) {
-                if (attempt == maxRetries - 1) throw e;
+            for (int attempt = 0; attempt < maxRetries; attempt++) {
                 try {
-                    Thread.sleep(retryDelay);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while waiting to retry", ie);
+                    return tsqcoConfig.getSmartConnect().marketData(payload);
+                } catch (Exception | SmartAPIException e) {
+                    if (attempt == maxRetries - 1) throw new RuntimeException(e.getMessage());
+                    try {
+                        Thread.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("Interrupted while waiting to retry", ie);
+                    }
+                    retryDelay *= 2; // Exponential backoff
                 }
-                retryDelay *= 2; // Exponential backoff
             }
+        } catch (Exception ex) {
+            throw new RuntimeException("Max retries reached");
         }
-        throw new IOException("Max retries reached");
+        return payload;
     }
 
 
@@ -648,89 +662,91 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
         });
     }
 
-
-
-
-
     @Override
-    public void verfiySubsciptions() throws SmartAPIException, IOException {
-        long elapsedTime = System.currentTimeMillis() - tsqcoConfig.getMarketOpenTime();
+    public void analyzeAndUpdateSubscriptions() throws RuntimeException {
+        try {
+            long elapsedTime = System.currentTimeMillis() -
+                    Long.parseLong(tsqcoAngelAppConfigService.getConfigValue("markettimeopen"));
+            if (elapsedTime >= 2 * 60 * 60 * 1000) { // Stop after 2 hours
+                log.info("Stopping subscription updates after 2 hours.");
+                return;
+            }
 
-        if (elapsedTime >= 2 * 60 * 60 * 1000) { // Stop after 2 hours
-            log.info("Stopping subscription updates after 2 hours.");
-            return;
-        }
-
-        // Refresh market data
-        Map<String, Double> tokenChanges = fetchAndCalculatePercentageChanges();
-
-        // Update subscriptions at defined intervals
-        long minutesSinceOpen = elapsedTime / (60 * 1000);
-
-        if (minutesSinceOpen == 5 || minutesSinceOpen % 15 == 0) {
+            Map<String, Double> tokenChanges = fetchAndCalculatePercentageChanges();
             adjustSubscriptions(tokenChanges);
+
+        } catch (Exception ex) {
+            log.error("TsqcoDashBoardServiceImpl :: verfiySubsciptions :: "+ex.getMessage());
+            throw new RuntimeException(ex.getMessage());
         }
     }
 
-    private void adjustSubscriptions(Map<String, Double> tokenChanges)  {
+
+
+    private void adjustSubscriptions(Map<String, Double> tokenChanges) throws RuntimeException {
         // Remove tokens with negative percentage change or unsubscribed
-        subscribedTokens.entrySet().removeIf(entry -> {
-            String symbol = entry.getKey();
-            Double percentageChange = tokenChanges.getOrDefault(symbol, 0.0);
-            boolean shouldRemove = percentageChange <= 0;
-            if (shouldRemove && !cacheHelper.isStockPurchased(symbol)) {
-                Set<TokenID> unsubscribeSet = new HashSet<>();
-                unsubscribeSet.add(new TokenID(ExchangeType.NSE_CM, entry.getKey()));
-                unsubscribeTokenFromStreaming(unsubscribeSet);// Pass a single token symbol to unsubscribe
-            }
-            return shouldRemove;
-        });
-
-        // Replace tokens if needed
-        int tokensNeeded = MAX_POSITIVE_SUBSCRIPTIONS - subscribedTokens.size();
-
-        if (tokensNeeded > 0) {
-            List<Map.Entry<String, Double>> sortedTokens = tokenChanges.entrySet().stream()
-                    .filter(entry -> !subscribedTokens.containsKey(entry.getKey())) // Exclude already subscribed
-                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                    .limit(tokensNeeded)
-                    .collect(Collectors.toList());
-
-            // Prepare a Set of TokenID objects for the batch subscription
-            Set<TokenID> tokenSet = new HashSet<>();
-            for (Map.Entry<String, Double> token : sortedTokens) {
-                tokenSet.add(new TokenID(ExchangeType.NSE_CM, token.getKey()));  // Create TokenID from symbol
-                subscribedTokens.put(token.getKey(), token.getValue());  // Store in subscribedTokens map
-            }
-
-            subscribeTokenForStreaming(tokenSet);  // Call subscribeToken with the Set of TokenID
-        }
-
-        // Add or replace the single maximum negative token
-        Map.Entry<String, Double> maxNegativeToken = tokenChanges.entrySet().stream()
-                .min(Map.Entry.comparingByValue())
-                .orElse(null);
-
-        // Check if a new maximum negative token is found and it is different from the current one
-        if (maxNegativeToken != null && !subscribedTokens.containsKey(maxNegativeToken.getKey())) {
-            String currentMaxNegativeToken = findCurrentMaxNegativeToken();
-
-            if (currentMaxNegativeToken != null && !currentMaxNegativeToken.equals(maxNegativeToken.getKey())) {
-                // Unsubscribe the old negative token using Set<TokenID>
-                if(!cacheHelper.isStockPurchased(currentMaxNegativeToken)) {
+        try {
+            subscribedTokens.entrySet().removeIf(entry -> {
+                String symbol = entry.getKey();
+                Double percentageChange = tokenChanges.getOrDefault(symbol, 3.0);
+                boolean shouldRemove = percentageChange <= 0;
+                if (shouldRemove && !cacheHelper.isStockPurchased(symbol)) {
                     Set<TokenID> unsubscribeSet = new HashSet<>();
-                    unsubscribeSet.add(new TokenID(ExchangeType.NSE_CM, currentMaxNegativeToken));
+                    unsubscribeSet.add(new TokenID(ExchangeType.NSE_CM, entry.getKey()));
                     unsubscribeTokenFromStreaming(unsubscribeSet);
                 }
+                return shouldRemove;
+            });
 
-                // Subscribe the new max negative token
-                Set<TokenID> subscribeSet = new HashSet<>();
-                subscribeSet.add(new TokenID(ExchangeType.NSE_CM, maxNegativeToken.getKey()));
-                subscribeTokenForStreaming(subscribeSet);
+            // Replace tokens if needed
+            int tokensNeeded = MAX_POSITIVE_SUBSCRIPTIONS - subscribedTokens.size();
 
-                // Update the subscribedTokens map
-                subscribedTokens.put(maxNegativeToken.getKey(), maxNegativeToken.getValue());
+            if (tokensNeeded > 0) {
+                List<Map.Entry<String, Double>> sortedTokens = tokenChanges.entrySet().stream()
+                        .filter(entry -> !subscribedTokens.containsKey(entry.getKey())) // Exclude already subscribed
+                        .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                        .limit(tokensNeeded)
+                        .collect(Collectors.toList());
+
+                // Prepare a Set of TokenID objects for the batch subscription
+                Set<TokenID> tokenSet = new HashSet<>();
+                for (Map.Entry<String, Double> token : sortedTokens) {
+                    tokenSet.add(new TokenID(ExchangeType.NSE_CM, token.getKey()));  // Create TokenID from symbol
+                    subscribedTokens.put(token.getKey(), token.getValue());  // Store in subscribedTokens map
+                }
+
+                subscribeTokenForStreaming(tokenSet);  // Call subscribeToken with the Set of TokenID
             }
+
+            // Add or replace the single maximum negative token
+            Map.Entry<String, Double> maxNegativeToken = tokenChanges.entrySet().stream()
+                    .min(Map.Entry.comparingByValue())
+                    .orElse(null);
+
+            // Check if a new maximum negative token is found and it is different from the current one
+            if (maxNegativeToken != null && !subscribedTokens.containsKey(maxNegativeToken.getKey())) {
+                String currentMaxNegativeToken = findCurrentMaxNegativeToken();
+
+                if (currentMaxNegativeToken != null && !currentMaxNegativeToken.equals(maxNegativeToken.getKey())) {
+                    // Unsubscribe the old negative token using Set<TokenID>
+                    if (!cacheHelper.isStockPurchased(currentMaxNegativeToken)) {
+                        Set<TokenID> unsubscribeSet = new HashSet<>();
+                        unsubscribeSet.add(new TokenID(ExchangeType.NSE_CM, currentMaxNegativeToken));
+                        unsubscribeTokenFromStreaming(unsubscribeSet);
+                    }
+
+                    // Subscribe the new max negative token
+                    Set<TokenID> subscribeSet = new HashSet<>();
+                    subscribeSet.add(new TokenID(ExchangeType.NSE_CM, maxNegativeToken.getKey()));
+                    subscribeTokenForStreaming(subscribeSet);
+
+                    // Update the subscribedTokens map
+                    subscribedTokens.put(maxNegativeToken.getKey(), maxNegativeToken.getValue());
+                }
+            }
+        } catch (Exception ex){
+            log.error("TsqcoDashBoardServiceImpl :: adjustSubscriptions :: "+ex.getMessage());
+            throw new RuntimeException(ex.getMessage());
         }
     }
 
@@ -739,5 +755,43 @@ public class TsqcoDashBoardServiceImpl implements TsqcoDashBoardService {
                 .min(Map.Entry.comparingByValue()) // Find the entry with the minimum value (most negative)
                 .map(Map.Entry::getKey)
                 .orElse(null);
+    }
+
+    @Override
+    public String updateLTPOfAllEquityTokens() throws RuntimeException {
+        try {
+            // Fetch all equity tokens with the specified suffix
+            List<TsqcoInstrumentByEquityDTO> equityTokens = tsqcoAngelInstrumentsRepo.findInstrumentsBySymbolSuffix("-EQ");
+
+            // Map token to instrument ID for quick lookup
+            Map<String, Long> tokenToIdMap = equityTokens.stream()
+                    .collect(Collectors.toMap(TsqcoInstrumentByEquityDTO::getToken, TsqcoInstrumentByEquityDTO::getInstrument_id));
+
+            // Fetch market data for these tokens
+            List<String> tokens = new ArrayList<>(tokenToIdMap.keySet());
+            JSONObject marketData = getMarketDataBatch(String.join(",", tokens));
+            JSONArray fetchedData = marketData.getJSONArray("fetched");
+
+            // Prepare a map of instrument IDs and their new LTP values
+            Map<Long, Float> idToLtpMap = new HashMap<>();
+            for (Object obj : fetchedData) {
+                JSONObject tokenData = (JSONObject) obj;
+                String token = tokenData.getString("symbolToken");
+                Float newLTP = tokenData.getFloat("ltp");
+
+                // Find the corresponding instrument ID
+                Long instrumentId = tokenToIdMap.get(token);
+                if (instrumentId != null) {
+                    idToLtpMap.put(instrumentId, newLTP);
+                }
+            }
+
+            // Perform batch updates
+            idToLtpMap.forEach((id, ltp) -> tsqcoAngelInstrumentsRepo.updateLTPById(ltp, id));
+        } catch (Exception ex) {
+            log.error("updateLTPOfAllEquityTokens :: " + ex.getMessage(), ex);
+            throw new RuntimeException("Error updating LTP of equity tokens: " + ex.getMessage());
+        }
+        return "LTP of Equity successfully updated";
     }
 }

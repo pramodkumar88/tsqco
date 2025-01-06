@@ -2,19 +2,18 @@ package com.tsqco.models.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
-@Setter
-@Getter
+@Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class TsqcoInstrumentDTO {
+public class TsqcoInstrumentByEquityDTO {
+    private Long instrument_id;
+    private String name;
     private String token;
     private String symbol;
     @JsonProperty("exch_seg")
     @Column(name = "exch_seg", nullable = false)
     private String exchseg;
+    private Float ltp;
 }

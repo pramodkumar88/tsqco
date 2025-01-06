@@ -38,17 +38,22 @@ public class NotificationHelper {
     }
 
     public static void sendMessage(String message) {
-        String endpoint = String.format("/bot%s/sendMessage", instance.botKey);
-        instance.webClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path(endpoint)
-                        .queryParam("chat_id", instance.chatId)
-                        .queryParam("text", message)
-                        .queryParam("parse_mode", "Markdown")
-                        .build())
-                .retrieve()
-                .bodyToMono(String.class)
-                .doOnError(e -> System.err.println("Failed to send message: " + e.getMessage()))
-                .subscribe();
+        try {
+            String endpoint = String.format("/bot%s/sendMessage", instance.botKey);
+            instance.webClient.post()
+                    .uri(uriBuilder -> uriBuilder
+                            .path(endpoint)
+                            .queryParam("chat_id", instance.chatId)
+                            .queryParam("text", message)
+                            .queryParam("parse_mode", "Markdown")
+                            .build())
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .retry(3)
+                    .doOnError(e -> System.err.println("Failed to send message: " + e.getMessage()))
+                    .subscribe();
+        } catch (RuntimeException ex) {
+            log.error("Failed to post notification messages");
+        }
     }
 }

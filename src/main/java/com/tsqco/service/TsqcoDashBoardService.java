@@ -6,6 +6,7 @@ import com.neovisionaries.ws.client.WebSocketException;
 import com.tsqco.models.AngelGainersLosers;
 import com.tsqco.models.AngelMarketData;
 import com.tsqco.models.AngelTotalHolding;
+import com.tsqco.models.dto.TsqcoInstrumentByEquityDTO;
 import com.zerodhatech.kiteconnect.kitehttp.exceptions.KiteException;
 import com.zerodhatech.models.Holding;
 import org.json.JSONObject;
@@ -28,15 +29,15 @@ public interface TsqcoDashBoardService {
 
     List<AngelGainersLosers> getTopGainersAndLosers(String targetDate, int topN, boolean avgFlag) throws ParseException;
 
-    List<Object[]> findTokenAndLtpBySymbolPattern();
+    void fetchAndStoreTokens() throws RuntimeException;
 
-    void fetchAndStoreTokens();
+    void processInitialSubscriptions() throws RuntimeException;
 
-    void processInitialSubscriptions() throws SmartAPIException, IOException;
+    JSONObject getMarketDataBatch(String tokensString)  throws RuntimeException;
 
-    JSONObject getMarketDataBatch(String tokensString)  throws SmartAPIException, IOException;
+    void analyzeAndUpdateSubscriptions() throws RuntimeException;
 
-    void verfiySubsciptions() throws SmartAPIException, IOException;
+    String updateLTPOfAllEquityTokens() throws RuntimeException;
 }
 
 

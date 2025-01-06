@@ -175,11 +175,6 @@ public class TsqcoConfig {
         return user; // Return user if successfully created, otherwise null after retries
     }
 
-
-
-
-
-
     public com.angelbroking.smartapi.models.User getUser(SmartConnect smartConnect) {
         GoogleAuthenticator gAuth = new GoogleAuthenticator();
         int attempts = 0;
@@ -256,8 +251,15 @@ public class TsqcoConfig {
     }
 
     @Bean(name = "Notification")
-    public WebClient getNotificationWebClient(WebClient.Builder builder) {
-        return builder.baseUrl(telegramAppURL).build();
+    public WebClient getNotificationWebClient() {
+       return WebClient.builder()
+                .baseUrl(telegramAppURL)
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create()
+                                .responseTimeout(Duration.ofSeconds(30))  // Increase the response timeout
+                                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)  // Set connection timeout
+                ))
+                .build();
     }
 
     @Bean(name = "Analysis")
@@ -271,12 +273,12 @@ public class TsqcoConfig {
     }
 
 
-    @Bean
+    /*@Bean
     public long getMarketOpenTime() {
-        LocalTime marketOpenTime = LocalTime.of(9, 15);
+        LocalTime marketOpenTime = LocalTime.of(16,0);
         ZonedDateTime marketOpenDateTime = ZonedDateTime.of(LocalDate.now(), marketOpenTime, ZoneId.of("Asia/Kolkata"));
         return marketOpenDateTime.toInstant().toEpochMilli();
-    }
+    }*/
 
 
     @Bean

@@ -3,6 +3,7 @@ package com.tsqco.service;
 import com.angelbroking.smartapi.http.exceptions.SmartAPIException;
 import com.tsqco.models.TsqcoAngelInstruments;
 import com.tsqco.models.dto.*;
+import wiremock.Run;
 
 import java.io.IOException;
 import java.util.List;
@@ -24,6 +25,6 @@ public interface TsqcoComputationService {
 
     void handleRecommendation(AngelRecommendationDataDTO recommendationData);
 
-    public void analyzeStockData(String token);
+    void analyzeStockData(String token) throws RuntimeException;
 }
 

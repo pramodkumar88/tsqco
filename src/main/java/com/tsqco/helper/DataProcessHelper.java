@@ -1,5 +1,6 @@
 package com.tsqco.helper;
 
+import com.tsqco.service.TsqcoAngelAppConfigService;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,13 +17,15 @@ public class DataProcessHelper {
 
     private final CacheHelper cacheHelper;
 
+    private final TsqcoAngelAppConfigService tsqcoAngelAppConfigService;
+
     private static final String REDIS_KEY_PREFIX = "token:";
 
     public Map<String, List<String>> processInputData(String data[], String purchasePrice) {
         Map<String, List<Map<String, Object>>> groupedData = new HashMap<>();
-        String subscriptionMode = "QUOTE";
-        LocalTime startTime = LocalTime.of(9, 0); // 9:00 AM
-        LocalTime endTime = LocalTime.of(16, 30);
+        String subscriptionMode = tsqcoAngelAppConfigService.getConfigValue("subscriptionmode");
+        LocalTime startTime = LocalTime.parse(tsqcoAngelAppConfigService.getConfigValue("markettimeopen")); // 9:00 AM
+        LocalTime endTime = LocalTime.parse(tsqcoAngelAppConfigService.getConfigValue("markettimeclose"));
 
         for (String record : data) {
             String[] parts = record.split(" ");
@@ -99,18 +102,39 @@ public class DataProcessHelper {
 
             // Summaries
             List<String> summaries = new ArrayList<>();
-            if(!purchasePrice.isEmpty()){
+            if(!purchasePrice.isEmpty()) {
                 summaries.add("Purchased Price: "+purchasePrice);
-                summaries.add("Percentage Change: "+ getPercentageChange( Float.parseFloat(records.get(records.size() - 1).get("ltp").toString()), Float.parseFloat(purchasePrice)));
+                Float percentChange = getPercentageChange(Float.parseFloat(records.get(records.size() - 1).get("ltp").toString()), Float.parseFloat(purchasePrice));
+                if( percentChange> 0){
+                    summaries.add("Percentage Gain: "+percentChange);
+                } else{
+                    summaries.add("Percentage Loss: "+percentChange);
+                }
             } else {
                 String oldLTPStr = cacheHelper.getTokenData(REDIS_KEY_PREFIX + token.replace("NSE_CM-", ""));
-                summaries.add("Percentage Change: "+ getPercentageChange( Float.parseFloat(records.get(records.size() - 1).get("ltp").toString()), Float.parseFloat(oldLTPStr)));
+                Float percentChange = getPercentageChange( Float.parseFloat(records.get(records.size() - 1).get("ltp").toString()), Float.parseFloat(oldLTPStr));
+                if( percentChange> 0){
+                    summaries.add("Percentage Gain: "+percentChange);
+                } else{
+                    summaries.add("Percentage Loss: "+percentChange);
+                }
             }
             summaries.add("Current LTP: " + records.get(records.size() - 1).get("ltp"));
             summaries.add("Current Open: " + records.get(records.size() - 1).get("open"));
             summaries.add("Current High: " + records.get(records.size() - 1).get("high"));
             summaries.add("Current Low: " + records.get(records.size() - 1).get("low"));
             summaries.add("Current Close: " + records.get(records.size() - 1).get("close"));
+
+            // Add minutes to market close
+            ZonedDateTime latestExchangeTime = (ZonedDateTime) records.get(records.size() - 1).get("exchangeTime");
+            LocalTime recordTime = latestExchangeTime.toLocalTime();
+            long minutesToMarketClose = java.time.Duration.between(recordTime, endTime).toMinutes();
+            if (minutesToMarketClose > 0) {
+                summaries.add("Minutes to Market Close: " + minutesToMarketClose);
+            } else {
+                summaries.add("Market Closed");
+            }
+
 
             // Add SNAP_QUOTE data if in SNAP_QUOTE mode
             if ("SNAP_QUOTE".equals(subscriptionMode)) {

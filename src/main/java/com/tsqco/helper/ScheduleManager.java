@@ -40,23 +40,17 @@ public class ScheduleManager {
 
     private final TsqcoDashBoardService tsqcoDashBoardService;
 
-    private long marketOpenTime;
-
     @Scheduled(cron = "0 */3 9-16 * * MON-FRI")
     public void analyzeBuyStocksPeriodically() {
-        LocalTime now = LocalTime.now();
-        // Define the allowed time range
-        LocalTime startTime = LocalTime.of(9, 9);
-        LocalTime endTime = LocalTime.of(16, 0);
-        // Skip execution if the current time is outside the range
-        if (now.isBefore(startTime) || now.isAfter(endTime)) {
-            return;
-        }
-        //log.info("Analyzing Stock Data:: "+LocalDateTime.now());
-        Set<String> tokens = cacheHelper.getKeys("*");
-        for (String token : tokens) {
-            redisTemplate.convertAndSend(STOCK_ANALYSIS_CHANNEL,token);
-        }
+       try {
+           Set<String> tokens = cacheHelper.getKeys("*");
+           for (String token : tokens) {
+               redisTemplate.convertAndSend(STOCK_ANALYSIS_CHANNEL, token);
+           }
+       } catch (Exception ex) {
+           log.error("analyzeBuyStocksPeriodically : Stock Analysis Failed :: "+ex.getMessage());
+           sendMessage(NotificationFormatHelper.jobFailureAlert("STOCK_PERIOD_ANALYSIS", LocalDateTime.now(), "Periodic Analysis Failed. Please check immediately!" ));
+       }
     }
 
     //@Scheduled(cron = "0 45 8 * * MON-FRI") // Runs at every day at 8:45 AM
@@ -92,14 +86,13 @@ public class ScheduleManager {
          sendMessage(NotificationFormatHelper.jobFailureAlert("EPS_JOB", LocalDateTime.now(), "Loading EPS data is Failed!!" ));
          log.error("Loading EPS data is Failed!!");
        }
-    sendMessage(NotificationFormatHelper.jobCompletionAlert("EPS_JOB", LocalDateTime.now(), "Loading EPS data is Completed!!" ));
+        sendMessage(NotificationFormatHelper.jobCompletionAlert("EPS_JOB", LocalDateTime.now(), "Loading EPS data is Completed!!" ));
         log.info("Loading EPS data is Completed!!");
     }
 
     @Scheduled(cron = "0 20 9 * * MON-FRI") // Starts at 9:20 AM
     public void initializeMarketSession() throws SmartAPIException, IOException {
         try {
-            marketOpenTime = System.currentTimeMillis();
             tsqcoDashBoardService.fetchAndStoreTokens();
             tsqcoDashBoardService.processInitialSubscriptions();
         } catch (RuntimeException ex) {
@@ -111,13 +104,12 @@ public class ScheduleManager {
     }
 
     @Scheduled(cron = "0 30/15 9-11 * * MON-FRI") // Runs every 15 minutes for 2 hours after market opens
-    public void analyzeAndUpdateSubscriptions() throws SmartAPIException, IOException {
-        tsqcoDashBoardService.verfiySubsciptions();
-
+    public void analyzeAndUpdateSubscriptions() throws RuntimeException {
+        tsqcoDashBoardService.analyzeAndUpdateSubscriptions();
     }
 
 
-    @Scheduled(cron = "0 55 8 * * MON-FRI") // Runs at 8:50 AM everyday once
+    @Scheduled(cron = "0 45 8 * * MON") // Runs at 8:45 AM onec in a week
     public void loadAllInstruments() {
         try {
             tsqcoDashBoardService.loadAllAngelInstruments();
@@ -129,6 +121,17 @@ public class ScheduleManager {
         log.info("Insrtuments are refreshed Sucessfully!!");
     }
 
+    @Scheduled(cron = "0 50 8 * * MON-FRI") // Runs at 8:50 AM everyday once
+    public void updateLTPDataOfEquities() {
+        try {
+            tsqcoDashBoardService.updateLTPOfAllEquityTokens();
+        } catch (RuntimeException ex) {
+            sendMessage(NotificationFormatHelper.jobFailureAlert("UPDATE_ALL_EQ_LTP", LocalDateTime.now(), "LTP refresh is failed!!" ));
+            log.error("LTP refresh is failed!!");
+        }
+        sendMessage(NotificationFormatHelper.jobCompletionAlert("UPDATE_ALL_EQ_LTP", LocalDateTime.now(), "All LTP are refreshed sucessfully!" ));
+        log.info("All LTP are refreshed");
+    }
 
     @Scheduled(cron = "0 50 8 * * MON-FRI") // Runs at 8:50 AM everyday once
     public void clearAllTheTokenFromSubscription()  {
@@ -148,7 +151,7 @@ public class ScheduleManager {
             cacheHelper.removeAllTokensFromCache();
         } catch (RuntimeException ex) {
             sendMessage(NotificationFormatHelper.jobFailureAlert("CLEAR_DATA_IN_REDIS", LocalDateTime.now(), "All Data is not cleared in the Redis!!" ));
-            log.error("All the tokens are not cleared from Subscriptions");
+            log.error("Data in the redis is not cleared!!");
         }
         sendMessage(NotificationFormatHelper.jobCompletionAlert("CLEAR_DATA_IN_REDIS", LocalDateTime.now(), "All the data is clear in Redis!" ));
         log.info("All the data is clear in Redis");

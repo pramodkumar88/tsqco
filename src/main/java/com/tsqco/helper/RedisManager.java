@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.tsqco.constants.TsqcoConstants.STOCK_ANALYSIS_CHANNEL;
 import static com.tsqco.constants.TsqcoConstants.STOCK_DATA_CHANNEL;
+import static com.tsqco.helper.NotificationHelper.sendMessage;
 
 @Component
 @AllArgsConstructor
@@ -56,18 +57,28 @@ public class RedisManager implements MessageListener {
     }
 
     public void handleStockData(String data) {
-        String[] parts = data.split("\\$");
-        if (parts.length == 2) {
-            String token = parts[0];
-            String stockData = parts[1];
-            String key = "stockData:" + token;
-            redisTemplate.opsForList().leftPush(key, stockData);
-            redisTemplate.expire(key, TTL_SECONDS, TimeUnit.SECONDS);
+        try {
+            String[] parts = data.split("\\$");
+            if (parts.length == 2) {
+                String token = parts[0];
+                String stockData = parts[1];
+                String key = "stockData:" + token;
+                redisTemplate.opsForList().leftPush(key, stockData);
+                redisTemplate.expire(key, TTL_SECONDS, TimeUnit.SECONDS);
+            }
+        } catch (Exception ex){
+            log.error("handleStockData :: Exception Occurred : "+ex.getMessage());
+            sendMessage(NotificationFormatHelper.genericNotification("Handling Stock Data", ex.getMessage()));
         }
     }
 
     public void analyzeStockData(String token) {
-        tsqcoComputationService.analyzeStockData(token);
+       try {
+           tsqcoComputationService.analyzeStockData(token);
+       } catch (Exception ex) {
+           log.error("analyzeStockData :: Exception Occurred: "+ex.getMessage());
+           sendMessage(NotificationFormatHelper.genericNotification("Analysis Stock Data", ex.getMessage()));
+       }
     }
 
     /*private String fetchStockDataFromCache(String token) {
